@@ -30,10 +30,10 @@
 function fnPjax(selector, container, options) {
   var context = this
   return this.on('click.pjax', selector, function(event) {
-    options = optionsFor(container, options)
-    if (!options.container)
-      options.container = $(this).attr('data-pjax') || context
-    handleClick(event, options)
+    var opts = $.extend({}, optionsFor(container, options))
+    if (!opts.container)
+      opts.container = $(this).attr('data-pjax') || context
+    handleClick(event, opts)
   })
 }
 
@@ -123,8 +123,7 @@ function handleSubmit(event, container, options) {
     data: $(form).serializeArray(),
     container: $(form).attr('data-pjax'),
     target: form,
-    fragment: null,
-    timeout: 0
+    fragment: null
   }
 
   pjax($.extend({}, defaults, options))
@@ -186,6 +185,14 @@ function pjax(options) {
       settings.timeout = 0
     }
 
+    xhr.setRequestHeader('X-PJAX', 'true')
+    xhr.setRequestHeader('X-PJAX-Container', context.selector)
+
+    var result
+
+    if (!fire('pjax:beforeSend', [xhr, settings]))
+      return false
+
     if (settings.timeout > 0) {
       timeoutTimer = setTimeout(function() {
         if (fire('pjax:timeout', [xhr, options]))
@@ -195,14 +202,6 @@ function pjax(options) {
       // Clear timeout setting so jquerys internal timeout isn't invoked
       settings.timeout = 0
     }
-
-    xhr.setRequestHeader('X-PJAX', 'true')
-    xhr.setRequestHeader('X-PJAX-Container', context.selector)
-
-    var result
-
-    if (!fire('pjax:beforeSend', [xhr, settings]))
-      return false
 
     options.requestUrl = parseURL(settings.url).href
   }
@@ -220,8 +219,9 @@ function pjax(options) {
     var container = extractContainer("", xhr, options)
 
     var allowed = fire('pjax:error', [xhr, textStatus, errorThrown, options])
-    if (textStatus !== 'abort' && allowed)
+    if (options.type == 'GET' && textStatus !== 'abort' && allowed) {
       locationReplace(container.url)
+    }
   }
 
   options.success = function(data, status, xhr) {
@@ -231,7 +231,7 @@ function pjax(options) {
       locationReplace(container.url)
       return
     }
-    var nextId = window.history.length - 1
+    var nextId = new Date().getTime()
     if(pjax.state)
     {
       nextId = pjax.state.id + 1;
@@ -289,7 +289,7 @@ function pjax(options) {
   // behavior.
   if (!pjax.state) {
     pjax.state = {
-      id: window.history.length - 1,
+      id: new Date().getTime(),
       url: window.location.href,
       title: document.title,
       container: context.selector,
@@ -368,6 +368,7 @@ function onPjaxPopstate(event) {
 
         // Cache current container before replacement
         cacheCurrentPage(container.clone().contents());
+
       }
 
       var popstateEvent = $.Event('pjax:popstate', {
@@ -679,7 +680,8 @@ function disable() {
   $.pjax.disable = $.noop
   $.pjax.click = $.noop
   $.pjax.submit = $.noop
-  $.pjax.reload = window.location.reload
+  $.pjax.reload = function() { window.location.reload() }
+
   $(window).unbind('popstate.pjax', onPjaxPopstate)
 }
 

@@ -659,6 +659,27 @@ if ($.support.pjax) {
     }
   })
 
+  asyncTest("POST 500 never loads fallback", function() {
+    var frame = this.frame
+
+    frame.$("#main").on("pjax:complete", function() {
+      equal(frame.location.pathname, "/boom.html")
+      start()
+    })
+    frame.$("#main").on("pjax:error", function(event, xhr) {
+      ok(true)
+    })
+    frame.$("#main").on("pjax:timeout", function(event, xhr) {
+      ok(false)
+    })
+    this.iframe.onload = function() { ok(false) }
+
+    frame.$.pjax({
+      type: 'POST',
+      url: "boom.html",
+      container: "#main"
+    })
+  })
 
   function goBack(frame, callback) {
     setTimeout(function() {
@@ -773,6 +794,54 @@ if ($.support.pjax) {
       url: "hello.html",
       container: "#main"
     })
+  })
+
+  asyncTest("no initial pjax:popstate event", function() {
+    var frame = this.frame
+    var count = 0;
+
+    window.iframeLoad = function() {
+      count++
+
+      if (count == 1) {
+        equal(frame.location.pathname, "/home.html")
+        frame.location.pathname = "/hello.html"
+      } else if (count == 2) {
+        equal(frame.location.pathname, "/hello.html")
+        frame.$.pjax({url: "env.html", container: "#main"})
+      } else if (count == 3) {
+        equal(frame.location.pathname, "/env.html")
+        frame.history.back()
+      } else if (count == 4) {
+        equal(frame.location.pathname, "/hello.html")
+        frame.history.back()
+      } else if (count == 5) {
+        equal(frame.location.pathname, "/home.html")
+        frame.history.forward()
+      } else if (count == 6) {
+        // Should skip pjax:popstate since theres no initial pjax.state
+        frame.$('#main').on('pjax:popstate', function(event) {
+          if (count == 6) {
+            ok(event.state.url.match("/hello.html"), event.state.url)
+            ok(false)
+          } else if (count == 7) {
+            ok(event.state.url.match("/env.html"), event.state.url)
+            ok(true)
+          }
+        })
+
+        frame.$(frame.window).on('popstate', function() {
+          if (count == 6) {
+            count++
+            frame.history.forward()
+          } else {
+            start()
+          }
+        })
+      }
+    }
+
+    window.iframeLoad()
   })
 
   asyncTest("popstate preserves GET data", function() {
